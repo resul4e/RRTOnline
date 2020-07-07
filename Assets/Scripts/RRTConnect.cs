@@ -5,6 +5,7 @@ using System.ComponentModel.Design;
 using System.ComponentModel.Design.Serialization;
 using UnityEngine;
 using UnityEngine.UI;
+using Object = UnityEngine.Object;
 using Random = UnityEngine.Random;
 
 public enum ExtendStatus
@@ -17,13 +18,15 @@ public enum ExtendStatus
 public class Tree : IDisposable
 {
 	public GameObject NodePrefab;
+	public GameObject PathPrefab;
 	public Node Root;
 
-	public Tree(Vector3 _position, GameObject _nodePrefab)
+	public Tree(Vector3 _position, GameObject _nodePrefab, GameObject _pathPrefab)
 	{
 		NodePrefab = _nodePrefab;
+		PathPrefab = _pathPrefab;
 
-		Root = new Node(_position, NodePrefab);
+		Root = new Node(_position, NodePrefab, _pathPrefab);
 		m_nodes.Add(Root);
 		
 	}
@@ -40,14 +43,14 @@ public class Tree : IDisposable
 
 	public void AddNode(Vector3 _position)
 	{
-		var node = new Node(_position, NodePrefab);
+		var node = new Node(_position, NodePrefab, PathPrefab);
 		AddNode(node);
 	}
 
 	public void AddNode(Node _node)
 	{
 		var nearestNode = NearestNeighbour(_node.Position);
-		nearestNode.Children.Add(_node);
+		nearestNode.AddChild(_node);
 		_node.Parent = nearestNode;
 		m_nodes.Add(_node);
 		m_new = _node;
@@ -77,17 +80,32 @@ public class Tree : IDisposable
 
 public class Node : IDisposable
 {
-	public GameObject GOPrefab;
+	public static GameObject ConnectionPrefab;
+
+	private GameObject m_goPrefab;
+	private GameObject m_pathPrefab;
 
 	public Vector3 Position;
 	public Node Parent;
 	public List<Node> Children = new List<Node>();
 
-	public Node(Vector3 _pos, GameObject _prefab)
+	public Node(Vector3 _pos, GameObject _nodeprefab, GameObject _pathPrefab)
 	{
-		GOPrefab = _prefab;
+		m_goPrefab = _nodeprefab;
+		m_pathPrefab = _pathPrefab;
 		Position = _pos;
-		m_go = GameObject.Instantiate(GOPrefab, Position, Quaternion.identity);
+		m_nodeGO = GameObject.Instantiate(m_goPrefab, Position, Quaternion.identity);
+	}
+
+	public void AddChild(Node _child)
+	{
+		Children.Add(_child);
+		var diff = _child.Position - Position;
+		var center = diff / 2.0f;
+
+		var angle = Vector3.Dot(diff.normalized, Vector3.right);
+
+		m_connectionGO = GameObject.Instantiate(ConnectionPrefab, Position + center, Quaternion.Euler(0,0,Mathf.Rad2Deg * Mathf.Acos(angle)));
 	}
 
 	public void Draw()
@@ -101,16 +119,23 @@ public class Node : IDisposable
 		Gizmos.DrawSphere(Position, 0.3f);
 	}
 
+	public void SetAsPath()
+	{
+		Object.Destroy(m_nodeGO);
+		m_nodeGO = GameObject.Instantiate(m_pathPrefab, Position, Quaternion.identity);
+	}
+
 	public void Dispose()
 	{
-		GameObject.Destroy(m_go);
+		Object.Destroy(m_nodeGO);
 		foreach (var child in Children)
 		{
 			child.Dispose();
 		}
 	}
 
-	private GameObject m_go;
+	private GameObject m_nodeGO;
+	private GameObject m_connectionGO;
 }
 
 public class RRTConnect : RRTBase
@@ -141,6 +166,8 @@ public class RRTConnect : RRTBase
 
 	public GameObject StartPrefab;
 	public GameObject GoalPrefab;
+	public GameObject PathPrefab;
+	public GameObject ConnectionPrefab;
 
 	public ObstacleSpawner ObstacleSpawner;
 
@@ -154,11 +181,12 @@ public class RRTConnect : RRTBase
 
 	public override void Restart()
 	{
+		Node.ConnectionPrefab = ConnectionPrefab;
 		m_start?.Dispose();
 		m_end?.Dispose();
 
-		m_start = new Tree(Strt.transform.position, StartPrefab);
-		m_end = new Tree(Goal.transform.position, GoalPrefab);
+		m_start = new Tree(Strt.transform.position, StartPrefab, PathPrefab);
+		m_end = new Tree(Goal.transform.position, GoalPrefab, PathPrefab);
 		m_done = false;
 	}
 
@@ -193,6 +221,7 @@ public class RRTConnect : RRTBase
 				{
 					m_done = true;
 					ExecuteButton.interactable = false;
+					ShowPath();
 					break;
 				}
 			}
@@ -201,6 +230,24 @@ public class RRTConnect : RRTBase
 			m_start = m_end;
 			m_end = temp;
 		}
+	}
+
+	void ShowPath()
+	{
+		Node parent = m_start.GetLatestNode();
+		while (parent != null)
+		{
+			parent.SetAsPath();
+			parent = parent.Parent;
+		}
+
+		parent = m_end.GetLatestNode();
+		while (parent != null)
+		{
+			parent.SetAsPath();
+			parent = parent.Parent;
+		}
+
 	}
 
 	public void ChangeIterationsPerStep(Single _newSteps)

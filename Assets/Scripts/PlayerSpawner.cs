@@ -85,11 +85,5 @@ public class PlayerSpawner : MonoBehaviour
 	    return fLeft < sRight && fRight > sLeft && fTop < sBottom && fBottom > sTop;
     }
 
-	// Update is called once per frame
-	void Update()
-    {
-        
-    }
-
-	private Vector2 m_range;
+    private Vector2 m_range;
 }
