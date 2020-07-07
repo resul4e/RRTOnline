@@ -3,13 +3,14 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using UnityEngine;
+using UnityEngine.UI;
 using Random = UnityEngine.Random;
 
 public class ObstacleSpawner : MonoBehaviour
 {
 	public enum ObstaclesConfiguration
 	{
-        Random,
+		Random,
 		Narrow,
 		U
 	}
@@ -26,23 +27,23 @@ public class ObstacleSpawner : MonoBehaviour
 	public GameObject ObstaclePrefab;
 
 	// Start is called before the first frame update
-    void Start()
-    {
-	    float size = Camera.main.orthographicSize;
-	    float aspect = Camera.main.aspect;
+	void Start()
+	{
+		float size = Camera.main.orthographicSize;
+		float aspect = Camera.main.aspect;
 
-	    Range = new Vector2((size * aspect) - ObstaclePrefab.transform.localScale.x, size - ObstaclePrefab.transform.localScale.y);
-
-
+		m_range = new Vector2((size * aspect) - ObstaclePrefab.transform.localScale.x,
+			size - ObstaclePrefab.transform.localScale.y);
 	}
 
-    public void Respawn()
-    {
-	    foreach (var obs in m_obstacles)
-	    {
-		    Destroy(obs.gameObject);
-	    }
-	    m_obstacles.Clear();
+	public void Respawn()
+	{
+		foreach (var obs in m_obstacles)
+		{
+			Destroy(obs.gameObject);
+		}
+
+		m_obstacles.Clear();
 
 		switch (ObstacleConfig)
 		{
@@ -60,58 +61,59 @@ public class ObstacleSpawner : MonoBehaviour
 		}
 	}
 
-    private void RespawnU()
-    {
-	    var obs = Instantiate(ObstaclePrefab, new Vector3(0, 6, 0), Quaternion.identity);
-	    obs.transform.localScale = new Vector3(20, 3, 1);
-	    m_obstacles.Add(obs);
+	private void RespawnU()
+	{
+		var obs = Instantiate(ObstaclePrefab, new Vector3(0, 6, 0), Quaternion.identity);
+		obs.transform.localScale = new Vector3(20, 3, 1);
+		m_obstacles.Add(obs);
 
-	    obs = Instantiate(ObstaclePrefab, new Vector3(0, -6, 0), Quaternion.identity);
-	    obs.transform.localScale = new Vector3(20, 3, 1);
-	    m_obstacles.Add(obs);
+		obs = Instantiate(ObstaclePrefab, new Vector3(0, -6, 0), Quaternion.identity);
+		obs.transform.localScale = new Vector3(20, 3, 1);
+		m_obstacles.Add(obs);
 
-	    obs = Instantiate(ObstaclePrefab, new Vector3(8.5f, 0, 0), Quaternion.identity);
-	    obs.transform.localScale = new Vector3(3, 9, 1);
-	    m_obstacles.Add(obs);
+		obs = Instantiate(ObstaclePrefab, new Vector3(8.5f, 0, 0), Quaternion.identity);
+		obs.transform.localScale = new Vector3(3, 9, 1);
+		m_obstacles.Add(obs);
 	}
 
-    void RespawnRandom()
-    {
-	    //Spawn 25 obstacles at random location within the given Range.
-	    for (int i = 0; i < ObstacleAmount; i++)
-	    {
-		    var obs = Instantiate(ObstaclePrefab, new Vector3(Random.Range(-Range.x, Range.x), Random.Range(-Range.y, Range.y), 0), Quaternion.identity);
-		    m_obstacles.Add(obs);
-	    }
+	void RespawnRandom()
+	{
+		//Spawn 25 obstacles at random location within the given Range.
+		for (int i = 0; i < ObstacleAmount; i++)
+		{
+			var obs = Instantiate(ObstaclePrefab,
+				new Vector3(Random.Range(-m_range.x, m_range.x), Random.Range(-m_range.y, m_range.y), 0),
+				Quaternion.identity);
+			m_obstacles.Add(obs);
+		}
 	}
 
 	void RespawnNarrow()
 	{
 		float passageWidth = 3;
 
-		var obs = Instantiate(ObstaclePrefab, new Vector3(Range.x / 2, Range.y / 2, 0), Quaternion.identity);
-		obs.transform.localScale = new Vector3((Range.x) - passageWidth, (Range.y) - passageWidth, 1);
+		var obs = Instantiate(ObstaclePrefab, new Vector3(m_range.x / 2, m_range.y / 2, 0), Quaternion.identity);
+		obs.transform.localScale = new Vector3((m_range.x) - passageWidth, (m_range.y) - passageWidth, 1);
 		m_obstacles.Add(obs);
 
-		obs = Instantiate(ObstaclePrefab, new Vector3(-Range.x / 2, -Range.y / 2, 0), Quaternion.identity);
-		obs.transform.localScale = new Vector3((Range.x) - passageWidth, (Range.y) - passageWidth, 1);
+		obs = Instantiate(ObstaclePrefab, new Vector3(-m_range.x / 2, -m_range.y / 2, 0), Quaternion.identity);
+		obs.transform.localScale = new Vector3((m_range.x) - passageWidth, (m_range.y) - passageWidth, 1);
 		m_obstacles.Add(obs);
-		
-		obs = Instantiate(ObstaclePrefab, new Vector3(-Range.x / 2, Range.y / 2, 0), Quaternion.identity);
-		obs.transform.localScale = new Vector3((Range.x) - passageWidth, (Range.y) - passageWidth, 1);
+
+		obs = Instantiate(ObstaclePrefab, new Vector3(-m_range.x / 2, m_range.y / 2, 0), Quaternion.identity);
+		obs.transform.localScale = new Vector3((m_range.x) - passageWidth, (m_range.y) - passageWidth, 1);
 		m_obstacles.Add(obs);
-		
-		obs = Instantiate(ObstaclePrefab, new Vector3(Range.x / 2, -Range.y / 2, 0), Quaternion.identity);
-		obs.transform.localScale = new Vector3((Range.x) - passageWidth, (Range.y) - passageWidth, 1);
+
+		obs = Instantiate(ObstaclePrefab, new Vector3(m_range.x / 2, -m_range.y / 2, 0), Quaternion.identity);
+		obs.transform.localScale = new Vector3((m_range.x) - passageWidth, (m_range.y) - passageWidth, 1);
 		m_obstacles.Add(obs);
 	}
 
-		// Update is called once per frame
-    void Update()
-    {
-        
-    }
+	public void ChangeObstacleConfig(Int32 _config)
+	{
+		ObstacleConfig = (ObstaclesConfiguration)_config;
+	}
 
-    private Vector2 Range;
+private Vector2 m_range;
     private List<GameObject> m_obstacles = new List<GameObject>();
 }

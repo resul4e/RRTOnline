@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel.Design;
 using System.ComponentModel.Design.Serialization;
 using UnityEngine;
+using UnityEngine.UI;
 using Random = UnityEngine.Random;
 
 public enum ExtendStatus
@@ -12,24 +14,33 @@ public enum ExtendStatus
 	Advanced
 }
 
-public class Tree
+public class Tree : IDisposable
 {
+	public GameObject NodePrefab;
 	public Node Root;
 
-	public Tree(Vector3 _position)
+	public Tree(Vector3 _position, GameObject _nodePrefab)
 	{
-		Root = new Node() {Position = _position};
+		NodePrefab = _nodePrefab;
+
+		Root = new Node(_position, NodePrefab);
 		m_nodes.Add(Root);
+		
 	}
 
-	public Node GetNew()
+	public void Dispose()
+	{
+		Root.Dispose();
+	}
+
+	public Node GetLatestNode()
 	{
 		return m_new;
 	}
 
 	public void AddNode(Vector3 _position)
 	{
-		var node = new Node() {Position = _position};
+		var node = new Node(_position, NodePrefab);
 		AddNode(node);
 	}
 
@@ -61,15 +72,23 @@ public class Tree
 	}
 
 	private Node m_new;
-	private  float m_maxDist;
 	private List<Node> m_nodes = new List<Node>();
 }
 
-public class Node
+public class Node : IDisposable
 {
+	public GameObject GOPrefab;
+
 	public Vector3 Position;
 	public Node Parent;
 	public List<Node> Children = new List<Node>();
+
+	public Node(Vector3 _pos, GameObject _prefab)
+	{
+		GOPrefab = _prefab;
+		Position = _pos;
+		m_go = GameObject.Instantiate(GOPrefab, Position, Quaternion.identity);
+	}
 
 	public void Draw()
 	{
@@ -81,9 +100,20 @@ public class Node
 
 		Gizmos.DrawSphere(Position, 0.3f);
 	}
+
+	public void Dispose()
+	{
+		GameObject.Destroy(m_go);
+		foreach (var child in Children)
+		{
+			child.Dispose();
+		}
+	}
+
+	private GameObject m_go;
 }
 
-public class RRTConnect : MonoBehaviour
+public class RRTConnect : RRTBase
 {
 	/// <summary>
 	/// The rectangle that defines the area where new random points can be spawned
@@ -93,7 +123,7 @@ public class RRTConnect : MonoBehaviour
 	/// The maximum distance between the new point and the closest neighbour.
 	/// This dampens the outward growth of the tree.
 	/// </summary>
-	public float MaxDist = 0.4f;
+	public float MaxDist = 10f;
 	/// <summary>
 	/// How many steps we simulate per step. A step is executed every time the space key is pressed.
 	/// </summary>
@@ -109,50 +139,27 @@ public class RRTConnect : MonoBehaviour
 	/// </summary>
 	public GameObject Goal;
 
-	public ObstacleSpawner ObstacleSpawner; 
+	public GameObject StartPrefab;
+	public GameObject GoalPrefab;
+
+	public ObstacleSpawner ObstacleSpawner;
+
+	public Button ExecuteButton;
+	public Slider IterationSlider;
 
 	void Start()
 	{
-		Restart();
+		IterationSlider.value = IterationsPerStep;
 	}
 
-	void Restart()
+	public override void Restart()
 	{
+		m_start?.Dispose();
+		m_end?.Dispose();
+
+		m_start = new Tree(Strt.transform.position, StartPrefab);
+		m_end = new Tree(Goal.transform.position, GoalPrefab);
 		m_done = false;
-
-		ObstacleSpawner.Respawn();
-
-		//position the start and end somewhere valid
-		bool colliding = false;
-		do
-		{
-			Strt.transform.position = new Vector3(Random.Range(-Range.x, Range.x), Random.Range(-Range.y, Range.y));
-			foreach (var obs in ObstacleSpawner.Obstacles)
-			{
-				colliding = Box2BoxIntersect(obs.GetComponent<BoxCollider2D>(), Strt.GetComponent<BoxCollider2D>());
-				if (colliding)
-				{
-					break;
-				}
-			}
-		} while (colliding);
-		do
-		{
-			Goal.transform.position = new Vector3(Random.Range(-Range.x, Range.x), Random.Range(-Range.y, Range.y));
-			foreach (var obs in ObstacleSpawner.Obstacles)
-			{
-				colliding = Box2BoxIntersect(obs.GetComponent<BoxCollider2D>(), Goal.GetComponent<BoxCollider2D>());
-				if (colliding)
-				{
-					break;
-				}
-			}
-		} while (colliding);
-
-
-
-		m_start = new Tree(Strt.transform.position);
-		m_end = new Tree(Goal.transform.position);
 	}
 
 	/// <summary>
@@ -164,34 +171,28 @@ public class RRTConnect : MonoBehaviour
 		{
 			Restart();
 		}
-
-		foreach (var obs in ObstacleSpawner.Obstacles)
-		{
-			bool a = Box2BoxIntersect(obs.GetComponent<BoxCollider2D>(), Goal.GetComponent<BoxCollider2D>());
-			if (a)
-			{
-				Debug.Log(a);
-			}
-		}
-
-		//Check if the space key is pressed.
-		if (Input.GetKeyDown(KeyCode.Space))
-		{
-			Iterate();
-		}
 	}
 
+	/// <summary>
+	/// Iterate for the amount of steps chosen by <see cref="IterationsPerStep"/>
+	/// </summary>
 	public void Iterate()
 	{
+		if (m_done)
+		{
+			return;
+		}
+
 		for (int k = 0; k < IterationsPerStep; k++)
 		{
 			var qRand = RandomState();
 
 			if (Extend(m_start, qRand) != ExtendStatus.Trapped)
 			{
-				if (Connect(m_start.GetNew().Position) == ExtendStatus.Reached)
+				if (Connect(m_start.GetLatestNode().Position) == ExtendStatus.Reached)
 				{
 					m_done = true;
+					ExecuteButton.interactable = false;
 					break;
 				}
 			}
@@ -207,15 +208,14 @@ public class RRTConnect : MonoBehaviour
 		IterationsPerStep = (int)_newSteps;
 	}
 
-	private int m_maxItter = 100;
 	ExtendStatus Connect(Vector3 _q)
 	{
-		int itter = 0;
+		int iter = 0;
 		ExtendStatus status = Extend(m_end, _q);
-		while (m_maxItter != itter && status == ExtendStatus.Advanced)
+		while (m_maxIter != iter && status == ExtendStatus.Advanced)
 		{
 			status = Extend(m_end, _q);
-			itter++;
+			iter++;
 		}
 
 		return status;
@@ -278,26 +278,11 @@ public class RRTConnect : MonoBehaviour
 		{
 			if (dist < maxdist)
 			{
-				return _start + (dist - 0.1f) * dir;
+				return _start + (dist - 1) * dir;
 			}
 		}
 
 		return _end;
-	}
-
-	bool Box2BoxIntersect(BoxCollider2D _first, BoxCollider2D _second)
-	{
-		float fLeft = _first.transform.position.x + _first.offset.x - (_first.transform.localScale.x / 2.0f);
-		float fRight = _first.transform.position.x + _first.offset.x + (_first.transform.localScale.x / 2.0f);
-		float fTop = _first.transform.position.y + _first.offset.y - (_first.transform.localScale.y / 2.0f);
-		float fBottom = _first.transform.position.y + _first.offset.y + (_first.transform.localScale.y / 2.0f);
-
-		float sLeft = _second.transform.position.x + _second.offset.x - (_second.transform.localScale.x / 2.0f);
-		float sRight = _second.transform.position.x + _second.offset.x + (_second.transform.localScale.x / 2.0f);
-		float sTop = _second.transform.position.y + _second.offset.y - (_second.transform.localScale.y / 2.0f);
-		float sBottom = _second.transform.position.y + _second.offset.y + (_second.transform.localScale.y / 2.0f);
-
-		return fLeft < sRight && fRight > sLeft && fTop < sBottom && fBottom > sTop;
 	}
 
 	/// <summary>
@@ -309,60 +294,9 @@ public class RRTConnect : MonoBehaviour
 		return new Vector3(Random.Range(-Range.x, Range.x), Random.Range(-Range.y, Range.y), 0);
 	}
 
-	/// <summary>
-	/// Draw all gizmos to visualise what is happening.
-	/// </summary>
-	public void OnDrawGizmos()
-	{
-		if (m_start == null)
-		{
-			return;
-		}
-
-		if (m_done)
-		{
-			Gizmos.color = Color.grey;
-			m_start.Root.Draw();
-			m_end.Root.Draw();
-
-			Gizmos.color = Color.blue;
-			var parent = m_start.GetNew();
-			while (parent != null)
-			{
-				var pos = parent.Position;
-				Gizmos.DrawSphere(pos, 0.1f);
-				parent = parent.Parent;
-				if (parent != null)
-				{
-					Gizmos.DrawLine(pos, parent.Position);
-				}
-			}
-
-			parent = m_end.GetNew();
-			while (parent != null)
-			{
-				var pos = parent.Position;
-				Gizmos.DrawSphere(pos, 0.1f);
-				parent = parent.Parent;
-				if (parent != null)
-				{
-					Gizmos.DrawLine(pos, parent.Position);
-				}
-			}
-		}
-		else
-		{
-			Gizmos.color = Color.green;
-			m_start.Root.Draw();
-			Gizmos.color = Color.red;
-			m_end.Root.Draw();
-		}
-	}
-
-	private bool m_done = false;
+	private bool m_done;
 	private Tree m_start;
 	private Tree m_end;
-	//private List<GameObject> m_obstacles = new List<GameObject>();
 
-	private Vector3 m_randomPos;
+	private int m_maxIter = 100;
 }
